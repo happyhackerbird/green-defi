@@ -9,11 +9,11 @@ contract DeployPool is Script {
     LendingPool pool;
 
     function run() external {
-        uint256 deployerPrivateKey = vm.envUint("POLYGON_PRIVATE_KEY");
+        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast(deployerPrivateKey);
         pool = new LendingPool();
         console.log("LendingPool deployed at: %s", address(pool));
-        vm.endBroadcast();
+        vm.stopBroadcast();
         // deploy LendingPool
         // deploy LendingPoolAddressesProvider
         // deploy LendingPoolConfigurator
