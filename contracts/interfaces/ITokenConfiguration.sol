@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: agpl-3.0
-pragma solidity ^0.6.12;
+pragma solidity >=0.8.0;
 
 /**
  * @title ITokenConfiguration
@@ -8,7 +8,7 @@ pragma solidity ^0.6.12;
  * token configuration
  **/
 interface ITokenConfiguration {
-  function UNDERLYING_ASSET_ADDRESS() external view returns (address);
+    function UNDERLYING_ASSET_ADDRESS() external view returns (address);
 
-  function POOL() external view returns (address);
+    function POOL() external view returns (address);
 }
