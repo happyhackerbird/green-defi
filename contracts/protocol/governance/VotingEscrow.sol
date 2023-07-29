@@ -30,8 +30,8 @@ contract VotingEscrow is ERC20, Ownable {
     uint256 public constant WEEK = 1 weeks;
     // Maximum lock time is 4 years
     uint256 public constant MAXTIME = 4 * 52 * WEEK;
-    // safe cast to uint
-    int128 internal constant iMAXTIME = int(MAXTIME);
+    int128 internal constant iMAXTIME = 4 * 365 * 86400;
+    uint256 public constant MULTIPLIER = 10 ** 18;
 
     // address public blocklist
     // Smart contract addresses which are allowed to deposit
@@ -39,6 +39,7 @@ contract VotingEscrow is ERC20, Ownable {
     mapping(address => bool) public whitelist;
 
     // Lock state
+    // Every time a change in slope or bias occurs, the epoch is increased by 1, and a new checkpoint is recorded in the history
     uint256 public globalEpoch;
     // global voting power history, each index corresponds to an epoch (a specific point in time) at which the voting power is recorded
     Point[1000000000000000000] public pointHistory; // 1e9 * userPointHistory.length
@@ -144,5 +145,248 @@ contract VotingEscrow is ERC20, Ownable {
         );
 
         _depositFor(msg.sender, value, endWeek, Locked, LockAction.CREATE_LOCK);
+    }
+
+    /**
+     * @dev Deposits or creates a stake for a given address
+     * @param addr User address to assign the stake
+     * @param value Total units of staked token to lockup
+     * @param unlockTime Duration after which to unlock stake
+     * @param Locked Previous amount staked by this user
+     */
+    function _depositFor(
+        address addr,
+        uint256 value,
+        uint256 unlockTime,
+        LockedBalance memory Locked,
+        LockAction lockedAction
+    ) internal {
+        require(
+            ERC20(GREEN).balanceOf(addr) >= value,
+            "Not enough GREEN balance"
+        ); // don't need this necessarily
+
+        // For checkpoint() we need the old and new LockedBalance, so create a copy here to update with new values
+        LockedBalance memory newLocked = LockedBalance({
+            amount: Locked.amount,
+            end: Locked.end
+        });
+
+        // set initial value or add to old one
+        newLocked.amount = newLocked.amount + SafeCast.toInt128(int256(value));
+        // update the end value
+        if (unlockTime != 0) {
+            newLocked.end = unlockTime;
+        }
+        // store updated lock for user
+        lockedBalances[addr] = newLocked;
+
+        _checkpoint(addr, Locked, newLocked);
+
+        if (value != 0) {
+            ERC20(GREEN).safeTransferFrom(addr, address(this), value);
+        }
+        // mint veGREEN
+        // _mint(_add
+        emit Deposit(addr, value, newLocked.end, lockedAction, block.timestamp);
+    }
+
+    /**
+     * @dev Records a checkpoint of both individual and global slope
+     * @param addr User address, or address(0) for only global
+     * @param oldLocked Old amount that user had locked, or null for global
+     * @param newLocked new amount that user has locked, or null for global
+     */
+    function _checkpoint(
+        address addr,
+        LockedBalance memory oldLocked,
+        LockedBalance memory newLocked
+    ) internal {
+        // hold checkpoint for user
+        Point memory userOldPoint;
+        Point memory userNewPoint;
+        // represents change in slope at end of old/new lock
+        // it can be negative when the user creates a new lock
+        int128 oldSlopeDelta = 0;
+        int128 newSlopeDelta = 0;
+        uint256 epoch = globalEpoch;
+
+        // calculate slopes and biases if the user modified any lock
+        if (addr != address(0)) {
+            // if old lock was pre-existing
+            if (oldLocked.end > block.timestamp && oldLocked.amount > 0) {
+                userOldPoint.slope = oldLocked.amount / iMAXTIME;
+                // slope * lock time
+                // represents the increase in voting power from the locked token amount and remaining duration of lock
+                userOldPoint.bias =
+                    userOldPoint.slope *
+                    int128(int(oldLocked.end - block.timestamp));
+            }
+            // lock was created or extended (in value + duration)
+            if (newLocked.end > block.timestamp && newLocked.amount > 0) {
+                userNewPoint.slope = newLocked.amount / iMAXTIME;
+                userNewPoint.bias =
+                    userNewPoint.slope *
+                    int128(int(newLocked.end - block.timestamp));
+            }
+
+            // get the values of scheduled changes in the slope
+            oldSlopeDelta = slopeChanges[oldLocked.end];
+            if (newLocked.end != 0) {
+                // if the user just deposited more tokens
+                if (newLocked.end == oldLocked.end) {
+                    newSlopeDelta = oldSlopeDelta;
+                } else {
+                    // user extended or created new lock
+                    newSlopeDelta = slopeChanges[newLocked.end];
+                }
+            }
+        }
+
+        // Now calculate global voting power
+
+        // accumulate voting power in this struct (in later loop)
+        // either a point representing current time (if epoch = 0), or last recorded checkpoint
+        Point memory lastPoint = Point({
+            bias: 0,
+            slope: 0,
+            ts: block.timestamp,
+            blk: block.number
+        });
+        if (epoch > 0) {
+            lastPoint = pointHistory[epoch];
+        }
+        // get the time for this last checkpoint
+        uint lastCheckpoint = lastPoint.ts;
+        // initial_ lastPoint is used for extrapolation to calculate block number
+        // (approximately, for *At methods) and save them
+        // as we cannot figure that out exactly from inside the contract
+
+        // save for later approximation of the block number
+        uint initialLastPointTs = lastPoint.ts;
+        uint initialLastPointBlk = lastPoint.blk;
+
+        // estimate how many blocks have been mined since last checkpoint with d(blocks)/dt
+        // will be 0 if epoch = 0, or if last checkpoint was in this block
+        uint blockSlope = 0;
+        if (block.timestamp > lastPoint.ts) {
+            blockSlope =
+                (MULTIPLIER * (block.number - lastPoint.blk)) /
+                (block.timestamp - lastPoint.ts);
+        }
+
+        // this is the timestamp at the end of the previous week (starting from now, or the last checkpoint)
+        uint t_i = (lastCheckpoint / WEEK) * WEEK;
+
+        // this loop iterates over weeks from the last checkpoint until now
+        // it incrementally updates the global voting power for each weekly iteration and stores it as a checkpoint in the global history
+        // notice there can be at most 255 loops, if the function is not used for ~5yrs, users will be able to withdraw but vote weight will be broken
+        for (uint i = 0; i < 255; ++i) {
+            // let time represent end of this week
+            t_i += WEEK;
+
+            // get slope delta
+            int128 slopeDelta = 0;
+            if (t_i > block.timestamp) {
+                // if the time is in the future, reset it to current one
+                t_i = block.timestamp;
+            } else {
+                // else slopeDelta can be made to represent the change in slope at the end of this week
+                slopeDelta = slopeChanges[t_i];
+            }
+
+            // calculate accumulated voting power over the week that passed; and subtract
+            // bias represents the accumulated voting power until the previous checkpoint (week)
+            lastPoint.bias -=
+                lastPoint.slope *
+                int128(int(t_i - lastCheckpoint));
+
+            // add the change in slope & sanity checks
+            lastPoint.slope += slopeDelta;
+            if (lastPoint.bias < 0) {
+                // This can happen
+                lastPoint.bias = 0;
+            }
+            if (lastPoint.slope < 0) {
+                // This cannot happen - just in case
+                lastPoint.slope = 0;
+            }
+
+            // set checkpoint for next loop
+            lastCheckpoint = t_i;
+            lastPoint.ts = t_i;
+            // approximate block number for checkpoint using blockSlope
+            lastPoint.blk =
+                initialLastPointBlk +
+                // always t_i > initialLastPointTs
+                (blockSlope * (t_i - initialLastPointTs)) /
+                MULTIPLIER;
+
+            // Increase epoch
+            epoch += 1;
+            // if already at current time, break loop
+            // if not, store checkpoint in global history and continue
+            if (t_i == block.timestamp) {
+                lastPoint.blk = block.number;
+                break;
+            } else {
+                pointHistory[epoch] = lastPoint;
+            }
+        }
+
+        // update global epoch to account for the new checkpoints
+        globalEpoch = epoch;
+
+        // in case of user lock, update the global voting power with the user's new lock
+        if (addr != address(0)) {
+            // add the change in voting power rate of change (slope) to global history
+            lastPoint.slope += (userNewPoint.slope - userOldPoint.slope);
+            // add the change in accumulated voting power (bis) to global history
+            lastPoint.bias += (userNewPoint.bias - userOldPoint.bias);
+            if (lastPoint.slope < 0) {
+                lastPoint.slope = 0;
+            }
+            if (lastPoint.bias < 0) {
+                lastPoint.bias = 0;
+            }
+        }
+
+        // Finally record this last checkpoint (that accounts for any user's lock) in the global history
+        pointHistory[epoch] = lastPoint;
+
+        // Lastly, in case the user changed any locks, modify the scheduled slope changes
+        if (addr != address(0x0)) {
+            // in the case that there was a pre-existing old lock
+            if (oldLocked.end > block.timestamp) {
+                // cancel the calculation from (**)
+                oldSlopeDelta += userOldPoint.slope;
+                // in case the user just deposited tokens, not extend the lock duration
+                if (newLocked.end == oldLocked.end) {
+                    // substract slope from new amount to only account for the old slope
+                    oldSlopeDelta -= userNewPoint.slope;
+                }
+                // and schedule slope change
+                slopeChanges[oldLocked.end] = oldSlopeDelta;
+            }
+
+            // in case the user is extending the lock or creating a new one
+            if (newLocked.end > block.timestamp) {
+                if (newLocked.end > oldLocked.end) {
+                    // (**), can be negative
+                    newSlopeDelta -= userNewPoint.slope;
+                    slopeChanges[newLocked.end] = newSlopeDelta;
+                }
+                // else: we recorded it already in oldSlopeDelta
+            }
+
+            // update the values in storage for the user
+            address addr_ = addr; // fix stack too deep error
+            uint userEpoch = userPointEpoch[addr_] + 1;
+
+            userPointEpoch[addr_] = userEpoch;
+            userNewPoint.ts = block.timestamp;
+            userNewPoint.blk = block.number;
+            userPointHistory[addr_][userEpoch] = userNewPoint;
+        }
     }
 }
