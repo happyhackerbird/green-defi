@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin-contracts/IERC20.sol";
 import {SafeERC20} from "@openzeppelin-contracts/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin-contracts/SafeCast.sol";
 import {Ownable} from "@openzeppelin-contracts/Ownable.sol";
+import "forge-std/console.sol";
 
 /**
  * @title VotingEscrow
@@ -20,7 +21,7 @@ contract VotingEscrow is ERC20, Ownable {
     event Deposit(
         address indexed provider,
         uint256 value,
-        uint256 locktime,
+        uint256 unlockTime,
         LockAction indexed action,
         uint256 ts
     );
@@ -65,9 +66,9 @@ contract VotingEscrow is ERC20, Ownable {
     }
 
     enum LockAction {
-        CREATE_LOCK
-        // INCREASE_LOCK_AMOUNT,
-        // INCREASE_LOCK_TIME
+        CREATE_LOCK,
+        INCREASE_LOCK_AMOUNT,
+        INCREASE_LOCK_TIME
     }
 
     constructor(address greenToken) ERC20("Vote-Escrow GREEN", "veGREEN") {
@@ -145,6 +146,14 @@ contract VotingEscrow is ERC20, Ownable {
         );
 
         _depositFor(msg.sender, value, endWeek, Locked, LockAction.CREATE_LOCK);
+    }
+
+    function balanceOfAt(address addr, uint _t) external view returns (uint) {
+        return _balanceOf(addr, _t);
+    }
+
+    function currentBalance(address addr) external view returns (uint) {
+        return _balanceOf(addr, block.timestamp);
     }
 
     /**
@@ -255,6 +264,7 @@ contract VotingEscrow is ERC20, Ownable {
         });
         if (epoch > 0) {
             lastPoint = pointHistory[epoch];
+            console.log("getting checkpoint at", epoch);
         }
         // get the time for this last checkpoint
         uint lastCheckpoint = lastPoint.ts;
@@ -333,6 +343,7 @@ contract VotingEscrow is ERC20, Ownable {
                 pointHistory[epoch] = lastPoint;
             }
         }
+        console.log("exited with epoch", epoch);
 
         // update global epoch to account for the new checkpoints
         globalEpoch = epoch;
@@ -374,6 +385,7 @@ contract VotingEscrow is ERC20, Ownable {
                 if (newLocked.end > oldLocked.end) {
                     // (**), can be negative
                     newSlopeDelta -= userNewPoint.slope;
+                    // console.log("from within: %s", newSlopeDelta);
                     slopeChanges[newLocked.end] = newSlopeDelta;
                 }
                 // else: we recorded it already in oldSlopeDelta
@@ -387,6 +399,27 @@ contract VotingEscrow is ERC20, Ownable {
             userNewPoint.ts = block.timestamp;
             userNewPoint.blk = block.number;
             userPointHistory[addr_][userEpoch] = userNewPoint;
+        }
+    }
+
+    //  @dev Get the current voting power for `msg.sender`
+    //  @dev Adheres to the ERC20 `balanceOf` interface for Aragon compatibility
+    //  @param addr User wallet address
+    //  @param _t Timestamp to return voting power at
+    //  @return User voting power
+    function _balanceOf(address addr, uint _t) internal view returns (uint) {
+        uint epoch = userPointEpoch[addr];
+        if (epoch == 0) {
+            return 0;
+        } else {
+            Point memory lastPoint = userPointHistory[addr][epoch];
+            lastPoint.bias -=
+                lastPoint.slope *
+                int128(int(_t) - int(lastPoint.ts));
+            if (lastPoint.bias < 0) {
+                lastPoint.bias = 0;
+            }
+            return uint(int(lastPoint.bias));
         }
     }
 }
