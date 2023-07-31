@@ -126,7 +126,10 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
      * @param value Total units of staked token to lockup
      * @param unlockTime Time point at which to unlock the stake
      */
-    function createLock(uint256 value, uint256 unlockTime) external nonReentrant {
+    function createLock(
+        uint256 value,
+        uint256 unlockTime
+    ) external nonReentrant {
         LockedBalance memory Locked = LockedBalance({
             // get the users current position - 0 if new user
             amount: lockedBalances[msg.sender].amount,
@@ -151,42 +154,59 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Extend lock of msg.sender by tokens without affecting lock time 
+     * @dev Extend lock of msg.sender by tokens without affecting lock time
      * @param amount Amount of tokens to add to lock
      */
     function increaseAmount(uint amount) external nonReentrant {
-// get user's lock 
+        // get user's lock
         LockedBalance memory Locked = lockedBalances[msg.sender];
-        require(amount > 0, "Amount must be non-zero"); 
+        require(amount > 0, "Amount must be non-zero");
         require(Locked.amount > 0, "No lock found");
-        require(Locked.end > block.timestamp, "Lock is expired, withdraw first");
+        require(
+            Locked.end > block.timestamp,
+            "Lock is expired, withdraw first"
+        );
 
-        _depositFor(msg.sender, amount, 0, Locked, LockAction.INCREASE_LOCK_AMOUNT);
-
+        _depositFor(
+            msg.sender,
+            amount,
+            0,
+            Locked,
+            LockAction.INCREASE_LOCK_AMOUNT
+        );
     }
 
     /**
-     * @dev Extend lock of msg.sender by time without affecting lock amount 
+     * @dev Extend lock of msg.sender by time without affecting lock amount
      * @param newTime new unlock time
      */
     function increaseTime(uint newTime) external nonReentrant {
-                LockedBalance memory Locked = lockedBalances[msg.sender];
+        LockedBalance memory Locked = lockedBalances[msg.sender];
 
         uint unlockTime = (newTime / WEEK) * WEEK;
         require(Locked.amount > 0, "No lock found");
         require(Locked.end > block.timestamp, "Lock expired, withdraw");
         require(unlockTime > Locked.end, "New time must be after old");
-        require(unlockTime <= block.timestamp + MAXTIME, "Maximum locking duration four years");
+        require(
+            unlockTime <= block.timestamp + MAXTIME,
+            "Maximum locking duration four years"
+        );
 
-        _depositFor(msg.sender, 0, unlockTime, Locked, LockAction.INCREASE_LOCK_TIME);
-
+        _depositFor(
+            msg.sender,
+            0,
+            unlockTime,
+            Locked,
+            LockAction.INCREASE_LOCK_TIME
+        );
     }
-/**
-* @dev Get the balance of an account at a certain time
-* @param addr Address of the account
-* @param ts Time at which to get balance
-* @return balance of account at time ts
- */
+
+    /**
+     * @dev Get the balance of an account at a certain time
+     * @param addr Address of the account
+     * @param ts Time at which to get balance
+     * @return balance of account at time ts
+     */
     function balanceOfAt(address addr, uint ts) external view returns (uint) {
         return _balanceOf(addr, ts);
     }
@@ -354,6 +374,8 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
             lastPoint.bias -=
                 lastPoint.slope *
                 int128(int(t_i - lastCheckpoint));
+                console.log("epoch", epoch);
+                console.log("epoch, time difference", t_i, lastCheckpoint, t_i - lastCheckpoint);
 
             // add the change in slope & sanity checks
             lastPoint.slope += slopeDelta;
@@ -447,10 +469,10 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
 
     /**
      * @notice Returns the current balance of a user at time ts
-        * @param addr The address of the user
-        * @param ts The timestamp at which to calculate the balance
-        * @return The current balance of the user
-        */ 
+     * @param addr The address of the user
+     * @param ts The timestamp at which to calculate the balance
+     * @return The current balance of the user
+     */
     function _balanceOf(address addr, uint ts) internal view returns (uint) {
         uint epoch = userPointEpoch[addr];
         if (epoch == 0) {
