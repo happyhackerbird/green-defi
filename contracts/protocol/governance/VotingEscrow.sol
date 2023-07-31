@@ -6,6 +6,8 @@ import {IERC20} from "@openzeppelin-contracts/IERC20.sol";
 import {SafeERC20} from "@openzeppelin-contracts/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin-contracts/SafeCast.sol";
 import {Ownable} from "@openzeppelin-contracts/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin-contracts/ReentrancyGuard.sol";
+
 import "forge-std/console.sol";
 
 /**
@@ -15,7 +17,7 @@ import "forge-std/console.sol";
  * Voting weight is equal to w = amount *  t / t_max , so it is dependent on both the locked amount as well as the time locked.
  *
  */
-contract VotingEscrow is ERC20, Ownable {
+contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
     using SafeERC20 for ERC20;
 
     event Deposit(
@@ -122,9 +124,9 @@ contract VotingEscrow is ERC20, Ownable {
     /**
      * @dev Create a new lock
      * @param value Total units of staked token to lockup
-     * @param unlockTime Duration in seconds after which to unlock the stake
+     * @param unlockTime Time point at which to unlock the stake
      */
-    function createLock(uint256 value, uint256 unlockTime) external {
+    function createLock(uint256 value, uint256 unlockTime) external nonReentrant {
         LockedBalance memory Locked = LockedBalance({
             // get the users current position - 0 if new user
             amount: lockedBalances[msg.sender].amount,
@@ -148,20 +150,62 @@ contract VotingEscrow is ERC20, Ownable {
         _depositFor(msg.sender, value, endWeek, Locked, LockAction.CREATE_LOCK);
     }
 
-    function balanceOfAt(address addr, uint _t) external view returns (uint) {
-        return _balanceOf(addr, _t);
+    /**
+     * @dev Extend lock of msg.sender by tokens without affecting lock time 
+     * @param amount Amount of tokens to add to lock
+     */
+    function increaseAmount(uint amount) external nonReentrant {
+// get user's lock 
+        LockedBalance memory Locked = lockedBalances[msg.sender];
+        require(amount > 0, "Amount must be non-zero"); 
+        require(Locked.amount > 0, "No lock found");
+        require(Locked.end > block.timestamp, "Lock is expired, withdraw first");
+
+        _depositFor(msg.sender, amount, 0, Locked, LockAction.INCREASE_LOCK_AMOUNT);
+
     }
 
+    /**
+     * @dev Extend lock of msg.sender by time without affecting lock amount 
+     * @param newTime new unlock time
+     */
+    function increaseTime(uint newTime) external nonReentrant {
+                LockedBalance memory Locked = lockedBalances[msg.sender];
+
+        uint unlockTime = (newTime / WEEK) * WEEK;
+        require(Locked.amount > 0, "No lock found");
+        require(Locked.end > block.timestamp, "Lock expired, withdraw");
+        require(unlockTime > Locked.end, "New time must be after old");
+        require(unlockTime <= block.timestamp + MAXTIME, "Maximum locking duration four years");
+
+        _depositFor(msg.sender, 0, unlockTime, Locked, LockAction.INCREASE_LOCK_TIME);
+
+    }
+/**
+* @dev Get the balance of an account at a certain time
+* @param addr Address of the account
+* @param ts Time at which to get balance
+* @return balance of account at time ts
+ */
+    function balanceOfAt(address addr, uint ts) external view returns (uint) {
+        return _balanceOf(addr, ts);
+    }
+
+    /**
+     * @dev Get the current balance of an account
+     * @param addr Address of the account
+     * @return balance of account
+     */
     function currentBalance(address addr) external view returns (uint) {
         return _balanceOf(addr, block.timestamp);
     }
 
     /**
-     * @dev Deposits or creates a stake for a given address
+     * @dev Modify or create a stake for a given address
      * @param addr User address to assign the stake
-     * @param value Total units of staked token to lockup
-     * @param unlockTime Duration after which to unlock stake
-     * @param Locked Previous amount staked by this user
+     * @param value New or additional units of staking token to lockup
+     * @param unlockTime New or modified timestamp at which to unlock stake
+     * @param Locked Previous lock of this user
      */
     function _depositFor(
         address addr,
@@ -385,7 +429,6 @@ contract VotingEscrow is ERC20, Ownable {
                 if (newLocked.end > oldLocked.end) {
                     // (**), can be negative
                     newSlopeDelta -= userNewPoint.slope;
-                    // console.log("from within: %s", newSlopeDelta);
                     slopeChanges[newLocked.end] = newSlopeDelta;
                 }
                 // else: we recorded it already in oldSlopeDelta
@@ -402,12 +445,13 @@ contract VotingEscrow is ERC20, Ownable {
         }
     }
 
-    //  @dev Get the current voting power for `msg.sender`
-    //  @dev Adheres to the ERC20 `balanceOf` interface for Aragon compatibility
-    //  @param addr User wallet address
-    //  @param _t Timestamp to return voting power at
-    //  @return User voting power
-    function _balanceOf(address addr, uint _t) internal view returns (uint) {
+    /**
+     * @notice Returns the current balance of a user at time ts
+        * @param addr The address of the user
+        * @param ts The timestamp at which to calculate the balance
+        * @return The current balance of the user
+        */ 
+    function _balanceOf(address addr, uint ts) internal view returns (uint) {
         uint epoch = userPointEpoch[addr];
         if (epoch == 0) {
             return 0;
@@ -415,7 +459,7 @@ contract VotingEscrow is ERC20, Ownable {
             Point memory lastPoint = userPointHistory[addr][epoch];
             lastPoint.bias -=
                 lastPoint.slope *
-                int128(int(_t) - int(lastPoint.ts));
+                int128(int(ts) - int(lastPoint.ts));
             if (lastPoint.bias < 0) {
                 lastPoint.bias = 0;
             }
