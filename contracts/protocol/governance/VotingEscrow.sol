@@ -28,6 +28,8 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
         uint256 ts
     );
 
+    event Withdraw(address indexed provider, uint value, uint ts);
+
     // Shared global state
     address public immutable GREEN;
     uint256 public constant WEEK = 1 weeks;
@@ -114,14 +116,6 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
     /**************************Lockup************************************/
 
     /**
-     * @dev Trigger global checkpoint
-     */
-    function checkpoint() external {
-        LockedBalance memory empty;
-        _checkpoint(address(0), empty, empty);
-    }
-
-    /**
      * @dev Create a new lock
      * @param value Total units of staked token to lockup
      * @param unlockTime Time point at which to unlock the stake
@@ -185,7 +179,10 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
 
         uint unlockTime = (newTime / WEEK) * WEEK;
         require(Locked.amount > 0, "No lock found");
-        require(Locked.end > block.timestamp, "Lock is expired, withdraw first");
+        require(
+            Locked.end > block.timestamp,
+            "Lock is expired, withdraw first"
+        );
         require(unlockTime > Locked.end, "New time must be after old");
         require(
             unlockTime <= block.timestamp + MAXTIME,
@@ -199,6 +196,15 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
             Locked,
             LockAction.INCREASE_LOCK_TIME
         );
+    }
+
+
+    /**
+     * @dev Trigger global checkpoint
+     */
+    function checkpoint() external {
+        LockedBalance memory empty;
+        _checkpoint(address(0), empty, empty);
     }
 
     /**
@@ -221,6 +227,27 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
     }
 
     /**
+     * @dev Withdraw all tokens for msg.sender
+     */
+    function withdraw() external nonReentrant {
+        LockedBalance memory Locked = lockedBalances[msg.sender];
+        uint value = uint(int(Locked.amount));
+
+        require(block.timestamp >= Locked.end, "Lock hasn't expired yet");
+
+        lockedBalances[msg.sender] = LockedBalance(0, 0);
+
+        // old_locked can have either expired <= timestamp or zero end
+        // _locked has only 0 end
+        // Both can have >= 0 amount
+        _checkpoint(msg.sender, Locked, LockedBalance(0, 0));
+
+        ERC20(GREEN).safeTransfer(msg.sender, value);
+
+        emit Withdraw(msg.sender, value, block.timestamp);
+    }
+
+    /**
      * @dev Modify or create a stake for a given address
      * @param addr User address to assign the stake
      * @param value New or additional units of staking token to lockup
@@ -235,7 +262,7 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
         LockAction lockedAction
     ) internal {
         require(
-            ERC20(GREEN).allowance(addr, address(this)) >= value,
+            IERC20(GREEN).allowance(addr, address(this)) >= value,
             "Not enough GREEN balance"
         ); // don't need this necessarily
 
@@ -374,8 +401,13 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
             lastPoint.bias -=
                 lastPoint.slope *
                 int128(int(t_i - lastCheckpoint));
-                console.log("epoch", epoch);
-                console.log("epoch, time difference", t_i, lastCheckpoint, t_i - lastCheckpoint);
+            console.log("epoch", epoch);
+            console.log(
+                "epoch, time difference",
+                t_i,
+                lastCheckpoint,
+                t_i - lastCheckpoint
+            );
 
             // add the change in slope & sanity checks
             lastPoint.slope += slopeDelta;

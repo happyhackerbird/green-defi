@@ -23,6 +23,8 @@ contract VotingEscrowTest is Test {
         uint256 ts
     );
 
+    event Withdraw(address indexed provider, uint value, uint ts);
+
     enum LockAction {
         CREATE_LOCK,
         INCREASE_LOCK_AMOUNT,
@@ -418,6 +420,127 @@ contract VotingEscrowTest is Test {
         vm.warp(_getWeeksAfter(2));
         vm.expectRevert("Lock is expired, withdraw first");
         ve.increaseAmount(amount);
+    }
+
+    function test_checkpoint_Global() public {
+        uint startTime = _getWeeksAfter(1);
+        vm.warp(startTime); // set to start at first week
+        uint amount = 5 * 1e18;
+        uint end1 = _getWeeksAfter(52);
+        uint time = _getWeeksAfter(51);
+
+        token.approve(address(ve), amount);
+        ve.createLock(amount, end1);
+
+        // calculate voting power from users lcok
+        int128 i_amount = 5 * 1e18;
+        int128 slope1 = i_amount / iMAXTIME;
+        int128 bias1 = slope1 * int128(int(end1 - block.timestamp));
+        int128 bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
+        assertEq(bal, bias1);
+
+        // set time and trigger global checkpoint
+        vm.warp(time);
+        ve.checkpoint();
+
+        // individual user history hasnt been affected by the global checkpoint call
+        int128 bias;
+        int128 slope;
+        uint256 ts;
+        (bias, slope, ts) = ve.getLastUserPoint(address(this));
+        assertEq(bias, bias1);
+        assertEq(slope, slope1);
+        assertEq(ts, startTime);
+
+        // check accumulated history
+        // first epoch
+        (bias, slope, , ) = ve.pointHistory(1);
+        assertEq(bias, bias1);
+        assertEq(slope, slope1);
+        // 51 epoch
+        (bias, slope, , ) = ve.pointHistory(51);
+        assertEq(bias, bias1 - (50 weeks * slope1));
+        assertEq(slope, slope1);
+        // 52 epoch
+        (bias, slope, , ) = ve.pointHistory(52);
+        assertEq(bias, bias1 - (51 weeks * slope1));
+        assertEq(slope, slope1);
+        // 53 epoch - slope is 0 bc lock expired
+        (bias, slope, , ) = ve.pointHistory(53);
+        assertEq(slope, 0);
+    }
+
+    function test_balanceOfAt() public {
+        // 0 user epoch
+        assertEq(ve.balanceOfAt(address(this), _getWeeksAfter(1)), 0);
+
+        uint startTime = _getWeeksAfter(1);
+        vm.warp(startTime); // set to start at first week
+        uint amount = 5 * 1e18;
+        uint end1 = _getWeeksAfter(52);
+        token.approve(address(ve), amount);
+        ve.createLock(amount, end1);
+
+        // calculate voting power from users lcok
+        int128 i_amount = 5 * 1e18;
+        int128 slope1 = i_amount / iMAXTIME;
+        int128 bias1 = slope1 * int128(int(end1 - startTime));
+
+        // at current time
+        int128 bal = SafeCast.toInt128(
+            int(ve.balanceOfAt(address(this), startTime))
+        );
+        assertEq(bal, bias1);
+        // at future time
+        bal = SafeCast.toInt128(
+            int(ve.balanceOfAt(address(this), _getWeeksAfter(2)))
+        );
+        assertEq(bal, bias1 - (2 weeks * slope1));
+        // warp time and check at past time
+        vm.warp(_getWeeksAfter(2));
+        bal = SafeCast.toInt128(int(ve.balanceOfAt(address(this), startTime)));
+        assertEq(bal, bias1);
+    }
+
+    function test_withdraw() public {
+        uint amount = 5 * 1e18;
+        uint end1 = _getWeeksAfter(52);
+        token.approve(address(ve), amount);
+        ve.createLock(amount, end1);
+
+        token.approve(address(ve), amount);
+        ve.increaseAmount(amount);
+
+        end1 = _getWeeksAfter(52 * 2);
+        ve.increaseTime(end1);
+
+        int128 calculatedSlope = int128(10 * 1e18) / iMAXTIME;
+        int128 calculatedBias = calculatedSlope *
+            int128(int(end1 - block.timestamp));
+        int128 bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
+        assertEq(bal, calculatedBias);
+
+        assertEq(token.balanceOf(address(this)), (1000 - 10) * 1e18);
+
+        // expire the lock and withdraw
+        vm.warp(end1);
+        bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
+        assertEq(bal, 0);
+
+        vm.expectEmit(true, true, true, true);
+        emit Withdraw(address(this), amount * 2, block.timestamp);
+        ve.withdraw();
+        assertEq(token.balanceOf(address(this)), 1000 * 1e18);
+    }
+
+    function test_revert_withdraw_Invalid() public {
+        uint amount = 5 * 1e18;
+        uint end1 = _getWeeksAfter(52);
+        token.approve(address(ve), amount);
+        ve.createLock(amount, end1);
+
+        vm.expectRevert("Lock hasn't expired yet");
+        ve.withdraw();
     }
 
     // Helpers
