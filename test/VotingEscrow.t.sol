@@ -150,8 +150,7 @@ contract VotingEscrowTest is Test {
         (bias, slope, ts) = ve.getLastUserPoint(address(user2));
         assertEq(bias, bias2);
         assertEq(slope, slope2);
-                assertEq(1, ve.userPointEpoch(address(user2))); // notice that the epoch is always counted individually for each user 
-
+        assertEq(1, ve.userPointEpoch(address(user2))); // notice that the epoch is always counted individually for each user
 
         // check accumulated history
         (bias, slope, , ) = ve.pointHistory(1);
@@ -164,8 +163,8 @@ contract VotingEscrowTest is Test {
         //     3e18
         // );
         // because the lock is created less than a week in time after the first one, there is no reduction in voting power from the first lock yet
-        assertEq(bias, bias1 - 0 + bias2); 
-        // the slope grows by the second lock 
+        assertEq(bias, bias1 - 0 + bias2);
+        // the slope grows by the second lock
         assertEq(slope, slope1 + slope2);
 
         // // check the global state: epoch, pointHistory, global voting power
@@ -173,7 +172,7 @@ contract VotingEscrowTest is Test {
         // assertEq(ve.totalSupplyAt(block.timestamp), bias1 + bias2);
     }
 
-    // this test illustrates how the slope and biases change over time and when locks end 
+    // this test illustrates how the slope and biases change over time and when locks end
     function test_createLock_SlopeChange() public {
         vm.warp(_getWeeksAfter(1));
         uint amount = 5 * 1e18;
@@ -187,21 +186,20 @@ contract VotingEscrowTest is Test {
         ve.createLock(amount, end1);
         vm.stopPrank();
 
-// assert voting power 
+        // assert voting power
         int128 i_amount = 5 * 1e18;
         int128 slope1 = i_amount / iMAXTIME;
         int128 bias1 = slope1 * int128(int(end1 - block.timestamp));
-                int128 bal = SafeCast.toInt128(int(ve.currentBalance(address(user))));
+        int128 bal = SafeCast.toInt128(int(ve.currentBalance(address(user))));
         assertEq(bal, bias1);
-
 
         // set time to one week before lock ends (51 weeks)
         vm.warp(time);
 
-// second user creates lock
+        // second user creates lock
         token.approve(address(ve), amount);
         ve.createLock(amount, end1);
-// assert user voting power 
+        // assert user voting power
         int128 slope2 = i_amount / iMAXTIME;
         int128 bias2 = slope2 * int128(int(end1 - block.timestamp));
         bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
@@ -219,7 +217,6 @@ contract VotingEscrowTest is Test {
         assertEq(bias, bias2);
         assertEq(slope, slope2);
 
-
         // check accumulated history
         // first epoch
         (bias, slope, , ) = ve.pointHistory(1);
@@ -232,15 +229,13 @@ contract VotingEscrowTest is Test {
         assertEq(slope, slope1);
         // 51 epoch
         (bias, slope, , ) = ve.pointHistory(51);
-        assertEq(bias,
-            bias1 - (50 weeks * slope1));
+        assertEq(bias, bias1 - (50 weeks * slope1));
         assertEq(slope, slope1); // slope still remains unchanged
         // 52 epoch - at this epoch the slope changes because the first lock expires
         (bias, slope, , ) = ve.pointHistory(52);
         // this checkpoint accounts for the other lock - total voting power has increased at this point
-        assertEq(bias,
-            bias1 - (51 weeks * slope1) + bias2);
-            // the slope now accounts for the second lock too () 
+        assertEq(bias, bias1 - (51 weeks * slope1) + bias2);
+        // the slope now accounts for the second lock too ()
         assertEq(slope, slope1 + slope2);
 
         // now lets create another lock
@@ -254,14 +249,16 @@ contract VotingEscrowTest is Test {
         int128 slope3 = i_amount / iMAXTIME;
         int128 bias3 = slope3 * int128(int(end1 - block.timestamp));
         (bias, slope, , ) = ve.pointHistory(53);
-        assertEq(bias,
+        assertEq(
+            bias,
             bias1 -
                 (51 weeks * slope1) +
                 bias2 -
                 (slope1 + slope2) *
                 1 weeks +
-                bias3);
-                // the 
+                bias3
+        );
+        // the
         assertEq(slope, slope2);
 
         //global state
@@ -283,8 +280,12 @@ contract VotingEscrowTest is Test {
         vm.expectRevert("Stake must be non-zero amount");
         ve.createLock(0, end1);
 
-        // duration too short
+        // no funds
         uint amount = 5 * 1e18;
+        vm.expectRevert("Not enough GREEN balance");
+        ve.createLock(amount, end1);
+
+        // duration too short
         token.approve(address(ve), amount);
         vm.expectRevert("Duration must be at least one week");
         ve.createLock(amount, block.timestamp);
@@ -294,6 +295,67 @@ contract VotingEscrowTest is Test {
         ve.createLock(amount, _getWeeksAfter(52 * 4 + 1));
     }
 
+    function test_increaseTime() public {
+        uint amount = 5 * 1e18;
+        uint end1 = _getWeeksAfter(52);
+        uint end2 = _getWeeksAfter(52 * 2); // extend lock by 1 year
+
+        token.approve(address(ve), amount);
+        ve.createLock(amount, end1);
+
+        // assert balance with initial amount
+        int128 calculatedSlope = int128(5 * 1e18) / iMAXTIME;
+        int128 calculatedBias = calculatedSlope *
+            int128(int(end1 - block.timestamp));
+        int128 bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
+        assertEq(bal, calculatedBias);
+
+        // increase amount after a block
+        vm.roll(1);
+        vm.expectEmit(true, true, true, true);
+        emit Deposit(
+            address(this),
+            0,
+            end2,
+            LockAction.INCREASE_LOCK_TIME,
+            block.timestamp
+        );
+        ve.increaseTime(end2);
+
+        // assert balance with updated time (also checks user point history)
+        // if the user extends their lock they gain more voting power
+        calculatedBias = calculatedSlope * int128(int(end2 - block.timestamp));
+        assertLt(bal, calculatedBias);
+        bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
+        assertEq(bal, calculatedBias);
+
+        // the last checkpoint has the correct updated bias
+        (int128 bias, , , ) = ve.pointHistory(2);
+        assertEq(bias, calculatedBias);
+
+        // slope change schedules are updated
+        assertEq(ve.slopeChanges(end2), -calculatedSlope);
+        assertEq(ve.slopeChanges(end1), 0);
+    }
+
+    function test_revert_increaseTime_Invalid() public {
+        vm.expectRevert("No lock found");
+        ve.increaseTime(_getWeeksAfter(52));
+
+        token.approve(address(ve), 5 * 1e18);
+        ve.createLock(5 * 1e18, _getWeeksAfter(2));
+
+        vm.expectRevert("New time must be after old");
+        ve.increaseTime(_getWeeksAfter(1));
+
+        vm.expectRevert("Maximum locking duration four years");
+        ve.increaseTime(_getWeeksAfter(52 * 4 + 1));
+
+        vm.warp(_getWeeksAfter(2));
+        vm.expectRevert("Lock is expired, withdraw first");
+        ve.increaseTime(_getWeeksAfter(4));
+    }
+
     function test_increaseAmount() public {
         uint amount = 5 * 1e18;
         uint end1 = _getWeeksAfter(52);
@@ -301,11 +363,11 @@ contract VotingEscrowTest is Test {
         token.approve(address(ve), amount);
         ve.createLock(amount, end1);
 
+        // assert balance with initial amount
         int128 calculatedSlope = int128(5 * 1e18) / iMAXTIME;
         int128 calculatedBias = calculatedSlope *
             int128(int(end1 - block.timestamp));
         int128 bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
-        // assert balance with initial amount
         assertEq(bal, calculatedBias);
 
         // increase amount after a block
@@ -321,11 +383,41 @@ contract VotingEscrowTest is Test {
             block.timestamp
         );
         ve.increaseAmount(amount);
-        // int128 calculatedBias = calculatedSlope *
-        //     int128(int(endWeeks - block.timestamp));
+
+        // assert balance with updated amount (also checks user point history)
+        calculatedSlope = int128(10 * 1e18) / iMAXTIME;
+        calculatedBias = calculatedSlope * int128(int(end1 - block.timestamp));
         bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
-        // assert balance with updated amount - it has increased
-        assertGt(bal, calculatedBias);
+        assertEq(bal, calculatedBias);
+
+        // the last checkpoint has the correct updated slope
+        (int128 bias, int128 slope, , ) = ve.pointHistory(2);
+        assertEq(bias, calculatedBias);
+        assertEq(slope, calculatedSlope);
+
+        // scheduled slope change is updated
+        slope = ve.slopeChanges(end1);
+        assertEq(slope, -calculatedSlope);
+    }
+
+    function test_revert_increaseAmount_Invalid() public {
+        uint amount = 5 * 1e18;
+        vm.expectRevert("No lock found");
+        ve.increaseAmount(amount);
+
+        token.approve(address(ve), 5 * 1e18);
+        ve.createLock(5 * 1e18, _getWeeksAfter(2));
+
+        vm.expectRevert("Amount must be non-zero");
+        ve.increaseAmount(0);
+
+        // no funds
+        vm.expectRevert("Not enough GREEN balance");
+        ve.increaseAmount(amount);
+
+        vm.warp(_getWeeksAfter(2));
+        vm.expectRevert("Lock is expired, withdraw first");
+        ve.increaseAmount(amount);
     }
 
     // Helpers

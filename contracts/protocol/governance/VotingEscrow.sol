@@ -185,7 +185,7 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
 
         uint unlockTime = (newTime / WEEK) * WEEK;
         require(Locked.amount > 0, "No lock found");
-        require(Locked.end > block.timestamp, "Lock expired, withdraw");
+        require(Locked.end > block.timestamp, "Lock is expired, withdraw first");
         require(unlockTime > Locked.end, "New time must be after old");
         require(
             unlockTime <= block.timestamp + MAXTIME,
@@ -235,7 +235,7 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
         LockAction lockedAction
     ) internal {
         require(
-            ERC20(GREEN).balanceOf(addr) >= value,
+            ERC20(GREEN).allowance(addr, address(this)) >= value,
             "Not enough GREEN balance"
         ); // don't need this necessarily
 
