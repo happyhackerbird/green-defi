@@ -242,7 +242,7 @@ contract DefaultReserveInterestRateStrategy is IReserveInterestRateStrategy {
         uint256 totalVariableDebt,
         uint256 currentVariableBorrowRate,
         uint256 currentAverageStableBorrowRate
-    ) internal pure returns (uint256) {
+    ) internal view returns (uint256) {
         uint256 totalDebt = totalStableDebt.add(totalVariableDebt);
 
         if (totalDebt == 0) return 0;

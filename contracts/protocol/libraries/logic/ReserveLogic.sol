@@ -14,6 +14,7 @@ import {WadRayMath} from "../math/WadRayMath.sol";
 import {PercentageMath} from "../math/PercentageMath.sol";
 import {Errors} from "../helpers/Errors.sol";
 import {DataTypes} from "../types/DataTypes.sol";
+import "forge-std/console.sol";
 
 /**
  * @title ReserveLogic library
@@ -210,6 +211,7 @@ library ReserveLogic {
         uint256 liquidityAdded,
         uint256 liquidityTaken
     ) internal {
+        console.log("interest rate", reserve.currentLiquidityRate);
         UpdateInterestRatesLocalVars memory vars;
 
         vars.stableDebtTokenAddress = reserve.stableDebtTokenAddress;
@@ -258,6 +260,7 @@ library ReserveLogic {
         reserve.currentLiquidityRate = uint128(vars.newLiquidityRate);
         reserve.currentStableBorrowRate = uint128(vars.newStableRate);
         reserve.currentVariableBorrowRate = uint128(vars.newVariableRate);
+        console.log("interest rate after", reserve.currentLiquidityRate);
 
         emit ReserveDataUpdated(
             reserveAddress,

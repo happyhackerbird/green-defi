@@ -9,6 +9,7 @@ import {WadRayMath} from "../libraries/math/WadRayMath.sol";
 import {Errors} from "../libraries/helpers/Errors.sol";
 import {VersionedInitializable} from "../libraries/aave-upgradeability/VersionedInitializable.sol";
 import {IncentivizedERC20} from "./IncentivizedERC20.sol";
+import "forge-std/console.sol";
 
 /**
  * @title Aave ERC20 AToken
@@ -138,6 +139,7 @@ contract AToken is VersionedInitializable, IncentivizedERC20, IAToken {
         uint256 previousBalance = super.balanceOf(user);
 
         uint256 amountScaled = amount.rayDiv(index);
+        console.log("amount minted: %s", amountScaled);
         require(amountScaled != 0, Errors.CT_INVALID_MINT_AMOUNT);
         _mint(user, amountScaled);
 

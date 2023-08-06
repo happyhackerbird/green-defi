@@ -2,6 +2,7 @@
 pragma solidity >=0.8.0;
 
 import {Errors} from "../helpers/Errors.sol";
+import "forge-std/console.sol";
 
 /**
  * @title WadRayMath library
@@ -109,7 +110,7 @@ library WadRayMath {
      * @param b Ray
      * @return The result of a/b, in ray
      **/
-    function rayDiv(uint256 a, uint256 b) internal pure returns (uint256) {
+    function rayDiv(uint256 a, uint256 b) internal view returns (uint256) {
         require(b != 0, Errors.MATH_DIVISION_BY_ZERO);
         uint256 halfB = b / 2;
 
