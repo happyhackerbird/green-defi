@@ -30,7 +30,8 @@ contract PoolTest is Test {
     VariableDebtToken variableDebtToken;
     DefaultReserveInterestRateStrategy strategy;
     address admin = address(1234);
-    address asset = address(0xD838290e877E0188a4A44700463419ED96c16107);
+    address constant NCT = address(0xD838290e877E0188a4A44700463419ED96c16107);
+    address constant MOSS = address(0xAa7DbD1598251f856C12f63557A4C4397c253Cea);
 
     address user = address(123);
 
@@ -74,17 +75,17 @@ contract PoolTest is Test {
         setup_tokens();
         setup_interestRateStrategy();
         setup_oracle();
-                setup_carbonReserve();
+        setup_carbonReserve();
 
         vm.stopPrank();
 
-// setup funds
-        deal(asset, address(this), 10e27);
-        IERC20(asset).approve(address(pool), 10e27);
+        // setup funds
+        deal(NCT, address(this), 10e27);
+        IERC20(NCT).approve(address(pool), 10e27);
 
-        deal(asset, address(user), 1e27);
+        deal(NCT, address(user), 1e27);
         vm.prank(user);
-        IERC20(asset).approve(address(pool), 1e27);
+        IERC20(NCT).approve(address(pool), 1e27);
     }
 
     function setup_pool() public {
@@ -110,7 +111,7 @@ contract PoolTest is Test {
     function setup_tokens() public {
         aToken = new AToken(
             pool,
-            asset,
+            NCT,
             address(0),
             "carbonA",
             "CA",
@@ -118,14 +119,14 @@ contract PoolTest is Test {
         );
         stableDebtToken = new StableDebtToken(
             address(pool),
-            asset,
+            NCT,
             "StableDebt",
             "SD",
             address(0)
         );
         variableDebtToken = new VariableDebtToken(
             address(pool),
-            asset,
+            NCT,
             "VariableDebt",
             "VD",
             address(0)
@@ -147,8 +148,8 @@ contract PoolTest is Test {
     function setup_oracle() public {
         PriceOracle fallbackOracle = new PriceOracle();
         fallbackOracle.setEthUsdPrice(5848466240000000);
-        fallbackOracle.setAssetPrice(asset, 10000);
-        MockAggregator aggregator = new MockAggregator(10000);
+        fallbackOracle.setAssetPrice(NCT, 300 * 1e9);
+        MockAggregator aggregator = new MockAggregator(300 * 1e9);
 
         LendingRateOracle lendingRateOracle = new LendingRateOracle();
 
@@ -157,7 +158,7 @@ contract PoolTest is Test {
     }
 
     function setup_carbonReserve() public {
-        // this will get all token contracts as proxy & init the reserve for the underlying asset of the aToken
+        // this will get all token contracts as proxy & init the reserve for the underlying NCT of the aToken
         LendingPoolConfigurator(configurator).initReserve(
             address(aToken),
             address(stableDebtToken),
@@ -165,6 +166,10 @@ contract PoolTest is Test {
             18,
             address(strategy)
         );
+        LendingPoolConfigurator(configurator).enableBorrowingOnReserve(NCT, true);
+        //
+        // 5% liquidation bonus
+        LendingPoolConfigurator(configurator).configureReserveAsCollateral(NCT, 7500, 9000, 10500);
     }
 
     function test_setup() public {
@@ -189,8 +194,8 @@ contract PoolTest is Test {
     function test_deposit() public {
         uint amount = 100e18;
         vm.expectEmit(true, true, true, true);
-        emit Deposit(asset, address(this), address(this), amount, 0);
-        pool.deposit(asset, amount, address(this), 0);
+        emit Deposit(NCT, address(this), address(this), amount, 0);
+        pool.deposit(NCT, amount, address(this), 0);
         assertReserve(1e27, 1e27, 0, 0);
 
         //get newly minted tokens
@@ -201,37 +206,42 @@ contract PoolTest is Test {
         bal = AToken(aToken).balanceOf(address(this));
         assertEq(bal, amount);
 
-// deposit on behalf of another user & check balance
-        pool.deposit(asset, 5e18, address(user), 0);
+        // deposit on behalf of another user & check balance
+        pool.deposit(NCT, 5e18, address(user), 0);
         bal = AToken(aToken).balanceOf(address(user));
         assertEq(bal, 5e18);
     }
 
     function test_interestRateCalculation() public {
         uint amount = 100e18;
-        pool.deposit(asset, amount, address(this), 0);
+        pool.deposit(NCT, amount, address(this), 0);
 
         // at the start, reserve indices are initiliazed to 1e27 = 1 ray
         assertReserve(1e27, 1e27, 0, 0);
 
-        // return token + interest; 0 interest because no time has passed & no action taken yet 
+        // return token + interest; 0 interest because no time has passed & no action taken yet
         uint bal = AToken(aToken).balanceOf(address(this));
         assertEq(bal, amount);
 
-// 5 weeks have passed
+        // 5 weeks have passed, making time pass should update LI at next action 
         vm.warp(block.timestamp + 500 * WEEK);
         // deposit more liquidity - recalculates liquidity index
-        pool.deposit(asset, 50e18, address(user), 0);
+        pool.deposit(NCT, 50e18, address(user), 0);
         bal = AToken(aToken).balanceOf(address(user));
         assertEq(bal, 50e18);
         // assert that the liquidity index has been updated
         assertReserve(1e27, 1e27, 0, 0);
-
     }
 
     function test_borrow() public {
-        test_deposit();
-        pool.borrow(asset, 100, 2, 0, address(this));
+        uint amount = 100e18;
+        pool.deposit(NCT, amount, address(this), 0);
+
+        pool.deposit(NCT, 50e18, address(user), 0);
+vm.startPrank(user);
+pool.setUserUseReserveAsCollateral(NCT, true);
+        pool.borrow(MOSS, 1e18, 1, 0, address(this));
+        //something is missing 
     }
 
     function assertReserve(
@@ -240,7 +250,7 @@ contract PoolTest is Test {
         uint currentLiquidityRate,
         uint currentVariableBorrowRate
     ) public {
-        DataTypes.ReserveData memory reserve = pool.getReserveData(asset);
+        DataTypes.ReserveData memory reserve = pool.getReserveData(NCT);
         assertEq(reserve.liquidityIndex, liquidityIndex);
         assertEq(reserve.variableBorrowIndex, variableBorrowIndex);
         assertEq(reserve.currentLiquidityRate, currentLiquidityRate);

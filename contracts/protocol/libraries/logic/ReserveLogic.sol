@@ -211,7 +211,7 @@ library ReserveLogic {
         uint256 liquidityAdded,
         uint256 liquidityTaken
     ) internal {
-        console.log("interest rate", reserve.currentLiquidityRate);
+        console.log("interest rate - same as last, now updating", reserve.currentLiquidityRate);
         UpdateInterestRatesLocalVars memory vars;
 
         vars.stableDebtTokenAddress = reserve.stableDebtTokenAddress;
@@ -230,6 +230,7 @@ library ReserveLogic {
         vars.availableLiquidity = IERC20(reserveAddress).balanceOf(
             aTokenAddress
         );
+
 
         (
             vars.newLiquidityRate,
@@ -374,6 +375,7 @@ library ReserveLogic {
         uint40 timestamp
     ) internal returns (uint256, uint256) {
         uint256 currentLiquidityRate = reserve.currentLiquidityRate;
+        console.log("update reserve indices, current liquidiyt rate", currentLiquidityRate);
 
         uint256 newLiquidityIndex = liquidityIndex;
         uint256 newVariableBorrowIndex = variableBorrowIndex;

@@ -27,6 +27,7 @@ import {DataTypes} from "../libraries/types/DataTypes.sol";
 import {LendingPoolStorage} from "./LendingPoolStorage.sol";
 
 import {UserConfiguration} from "../libraries/configuration/UserConfiguration.sol";
+import "forge-std/console.sol";
 
 /**
  * @title LendingPool contract
@@ -891,11 +892,14 @@ contract LendingPool is
         ];
 
         address oracle = _addressesProvider.getPriceOracle();
+        console.log("price", IPriceOracleGetter(oracle)
+            .getAssetPrice(vars.asset));
 
         uint256 amountInETH = IPriceOracleGetter(oracle)
             .getAssetPrice(vars.asset)
             .mul(vars.amount)
             .div(10 ** reserve.configuration.getDecimals());
+            console.log("amountInETH: %s", amountInETH);
 
         ValidationLogic.validateBorrow(
             vars.asset,

@@ -16,6 +16,7 @@ import {Errors} from "../helpers/Errors.sol";
 import {Helpers} from "../helpers/Helpers.sol";
 import {IReserveInterestRateStrategy} from "../../../interfaces/IReserveInterestRateStrategy.sol";
 import {DataTypes} from "../types/DataTypes.sol";
+import "forge-std/console.sol";
 
 /**
  * @title ReserveLogic library
@@ -147,7 +148,7 @@ library ValidationLogic {
             vars.isFrozen,
             vars.borrowingEnabled,
             vars.stableRateBorrowingEnabled
-        ) = reserve.configuration.getFlags();
+        ) = reserve.configuration.getFlags();        
 
         require(vars.isActive, Errors.VL_NO_ACTIVE_RESERVE);
         require(!vars.isFrozen, Errors.VL_RESERVE_FROZEN);
@@ -177,6 +178,7 @@ library ValidationLogic {
             oracle
         );
 
+
         require(
             vars.userCollateralBalanceETH > 0,
             Errors.VL_COLLATERAL_BALANCE_IS_0
@@ -193,7 +195,7 @@ library ValidationLogic {
             .userBorrowBalanceETH
             .add(amountInETH)
             .percentDiv(vars.currentLtv); //LTV is calculated in percentage
-
+console.log( "collateral:", vars.amountOfCollateralNeededETH, vars.userCollateralBalanceETH, vars.currentLtv);
         require(
             vars.amountOfCollateralNeededETH <= vars.userCollateralBalanceETH,
             Errors.VL_COLLATERAL_CANNOT_COVER_NEW_BORROW

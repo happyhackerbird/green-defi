@@ -8,6 +8,7 @@ import {PercentageMath} from "../libraries/math/PercentageMath.sol";
 import {ILendingPoolAddressesProvider} from "../../interfaces/ILendingPoolAddressesProvider.sol";
 import {ILendingRateOracle} from "../../interfaces/ILendingRateOracle.sol";
 import {IERC20} from "../../dependencies/openzeppelin/contracts/IERC20.sol";
+import "forge-std/console.sol";
 
 /**
  * @title DefaultReserveInterestRateStrategy contract
@@ -108,7 +109,9 @@ contract DefaultReserveInterestRateStrategy is IReserveInterestRateStrategy {
     /**
      * @dev Calculates the interest rates depending on the reserve's state and configurations
      * @param reserve The address of the reserve
-     * @param liquidityAdded The liquidity added during the operation
+     * @param liquidityAdded Th
+     
+     e liquidity added during the operation
      * @param liquidityTaken The liquidity taken during the operation
      * @param totalStableDebt The total borrowed from the reserve a stable rate
      * @param totalVariableDebt The total borrowed from the reserve at a variable rate
@@ -131,7 +134,6 @@ contract DefaultReserveInterestRateStrategy is IReserveInterestRateStrategy {
         availableLiquidity = availableLiquidity.add(liquidityAdded).sub(
             liquidityTaken
         );
-
         return
             calculateInterestRates(
                 reserve,
@@ -171,6 +173,13 @@ contract DefaultReserveInterestRateStrategy is IReserveInterestRateStrategy {
         uint256 averageStableBorrowRate,
         uint256 reserveFactor
     ) public view override returns (uint256, uint256, uint256) {
+        console.log("calculating interest rate with following paramaters");
+        console.log(availableLiquidity);
+        console.log(totalStableDebt);
+        console.log(totalVariableDebt);
+        console.log(averageStableBorrowRate);
+        console.log(reserveFactor);
+
         CalcInterestRatesLocalVars memory vars;
 
         vars.totalDebt = totalStableDebt.add(totalVariableDebt);

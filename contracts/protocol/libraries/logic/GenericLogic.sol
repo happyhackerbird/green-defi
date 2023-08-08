@@ -12,6 +12,7 @@ import {WadRayMath} from "../math/WadRayMath.sol";
 import {PercentageMath} from "../math/PercentageMath.sol";
 import {IPriceOracleGetter} from "../../../interfaces/IPriceOracleGetter.sol";
 import {DataTypes} from "../types/DataTypes.sol";
+import "forge-std/console.sol";
 
 /**
  * @title GenericLogic library
@@ -198,6 +199,9 @@ library GenericLogic {
                 vars.currentReserveAddress
             );
 
+            console.log(vars.compoundedLiquidityBalance, vars.liquidationThreshold, userConfig.isUsingAsCollateral(vars.i));
+
+
             if (
                 vars.liquidationThreshold != 0 &&
                 userConfig.isUsingAsCollateral(vars.i)
@@ -210,6 +214,8 @@ library GenericLogic {
                     .reserveUnitPrice
                     .mul(vars.compoundedLiquidityBalance)
                     .div(vars.tokenUnit);
+
+                    console.log("balance", liquidityBalanceETH);
 
                 vars.totalCollateralInETH = vars.totalCollateralInETH.add(
                     liquidityBalanceETH
