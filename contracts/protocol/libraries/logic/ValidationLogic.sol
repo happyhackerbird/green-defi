@@ -195,7 +195,6 @@ library ValidationLogic {
             .userBorrowBalanceETH
             .add(amountInETH)
             .percentDiv(vars.currentLtv); //LTV is calculated in percentage
-console.log( "collateral:", vars.amountOfCollateralNeededETH, vars.userCollateralBalanceETH, vars.currentLtv);
         require(
             vars.amountOfCollateralNeededETH <= vars.userCollateralBalanceETH,
             Errors.VL_COLLATERAL_CANNOT_COVER_NEW_BORROW

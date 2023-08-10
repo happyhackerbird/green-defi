@@ -112,6 +112,8 @@ library ReserveLogic {
         uint256 previousVariableBorrowIndex = reserve.variableBorrowIndex;
         uint256 previousLiquidityIndex = reserve.liquidityIndex;
         uint40 lastUpdatedTimestamp = reserve.lastUpdateTimestamp;
+            console.log("old LI",                 previousLiquidityIndex
+);
 
         (
             uint256 newLiquidityIndex,
@@ -123,6 +125,8 @@ library ReserveLogic {
                 previousVariableBorrowIndex,
                 lastUpdatedTimestamp
             );
+
+            console.log("new LI", newLiquidityIndex);
 
         _mintToTreasury(
             reserve,
@@ -211,7 +215,6 @@ library ReserveLogic {
         uint256 liquidityAdded,
         uint256 liquidityTaken
     ) internal {
-        console.log("interest rate - same as last, now updating", reserve.currentLiquidityRate);
         UpdateInterestRatesLocalVars memory vars;
 
         vars.stableDebtTokenAddress = reserve.stableDebtTokenAddress;
@@ -382,6 +385,7 @@ library ReserveLogic {
 
         //only cumulating if there is any income being produced
         if (currentLiquidityRate > 0) {
+            console.log("cumlating");
             uint256 cumulatedLiquidityInterest = MathUtils
                 .calculateLinearInterest(currentLiquidityRate, timestamp);
             newLiquidityIndex = cumulatedLiquidityInterest.rayMul(
@@ -391,6 +395,7 @@ library ReserveLogic {
                 newLiquidityIndex <= type(uint128).max,
                 Errors.RL_LIQUIDITY_INDEX_OVERFLOW
             );
+
 
             reserve.liquidityIndex = uint128(newLiquidityIndex);
 

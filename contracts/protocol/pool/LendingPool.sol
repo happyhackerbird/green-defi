@@ -892,8 +892,6 @@ contract LendingPool is
         ];
 
         address oracle = _addressesProvider.getPriceOracle();
-        console.log("price", IPriceOracleGetter(oracle)
-            .getAssetPrice(vars.asset));
 
         uint256 amountInETH = IPriceOracleGetter(oracle)
             .getAssetPrice(vars.asset)

@@ -181,6 +181,7 @@ library GenericLogic {
                 continue;
             }
 
+            //get current reserve asset + its unit price in ETH
             vars.currentReserveAddress = reserves[vars.i];
             DataTypes.ReserveData storage currentReserve = reservesData[
                 vars.currentReserveAddress
@@ -199,9 +200,6 @@ library GenericLogic {
                 vars.currentReserveAddress
             );
 
-            console.log(vars.compoundedLiquidityBalance, vars.liquidationThreshold, userConfig.isUsingAsCollateral(vars.i));
-
-
             if (
                 vars.liquidationThreshold != 0 &&
                 userConfig.isUsingAsCollateral(vars.i)
@@ -215,8 +213,6 @@ library GenericLogic {
                     .mul(vars.compoundedLiquidityBalance)
                     .div(vars.tokenUnit);
 
-                    console.log("balance", liquidityBalanceETH);
-
                 vars.totalCollateralInETH = vars.totalCollateralInETH.add(
                     liquidityBalanceETH
                 );
@@ -229,6 +225,7 @@ library GenericLogic {
                 );
             }
 
+            //get stable + variable debt
             if (userConfig.isBorrowing(vars.i)) {
                 vars.compoundedBorrowBalance = IERC20(
                     currentReserve.stableDebtTokenAddress

@@ -26,8 +26,12 @@ contract PoolTest is Test {
     LendingPoolAddressesProvider polygonProvider;
     address configurator;
     AToken aToken;
+    AToken aToken2;
     StableDebtToken stableDebtToken;
+    StableDebtToken stableDebtToken2;
     VariableDebtToken variableDebtToken;
+    VariableDebtToken variableDebtToken2;
+
     DefaultReserveInterestRateStrategy strategy;
     address admin = address(1234);
     address constant NCT = address(0xD838290e877E0188a4A44700463419ED96c16107);
@@ -36,6 +40,15 @@ contract PoolTest is Test {
     address user = address(123);
 
     uint constant WEEK = 1 weeks;
+
+            uint256 constant OPTIMAL_UTILIZATION_RATE = 800000000000000000; // 80%
+uint256 constant EXCESS_UTILIZATION_RATE = 200000000000000000; // 20%
+uint256 constant BASE_VARIABLE_BORROW_RATE = 10000000000000000; // 1%
+uint256 constant VARIABLE_RATE_SLOPE1 = 50000000000000000; // 5%
+uint256 constant VARIABLE_RATE_SLOPE2 = 100000000000000000; // 10%
+uint256 constant STABLE_RATE_SLOPE1 = 20000000000000000; // 2%
+uint256 constant STABLE_RATE_SLOPE2 = 40000000000000000; // 4%
+
 
     event Deposit(
         address indexed reserve,
@@ -69,6 +82,11 @@ contract PoolTest is Test {
         uint256 amount
     );
 
+    constructor () public {
+        setUp();
+        test_borrow();
+    }
+
     function setUp() public {
         vm.startPrank(admin);
         setup_pool();
@@ -83,9 +101,16 @@ contract PoolTest is Test {
         deal(NCT, address(this), 10e27);
         IERC20(NCT).approve(address(pool), 10e27);
 
+        deal(MOSS, address(this), 10e27);
+        IERC20(MOSS).approve(address(pool), 10e27);
+
         deal(NCT, address(user), 1e27);
-        vm.prank(user);
+        deal(MOSS, address(user), 1e27);
+        vm.startPrank(user);
         IERC20(NCT).approve(address(pool), 1e27);
+        IERC20(MOSS).approve(address(pool), 1e27);
+                vm.stopPrank();
+
     }
 
     function setup_pool() public {
@@ -109,14 +134,16 @@ contract PoolTest is Test {
     }
 
     function setup_tokens() public {
-        aToken = new AToken(
+        aToken = new AToken(pool, NCT, address(0), "carbonA", "CA", address(0));
+        aToken2 = new AToken(
             pool,
-            NCT,
+            MOSS,
             address(0),
-            "carbonA",
-            "CA",
+            "carbonB",
+            "CB",
             address(0)
         );
+
         stableDebtToken = new StableDebtToken(
             address(pool),
             NCT,
@@ -124,6 +151,14 @@ contract PoolTest is Test {
             "SD",
             address(0)
         );
+        stableDebtToken2 = new StableDebtToken(
+            address(pool),
+            MOSS,
+            "StableDebt2",
+            "SD2",
+            address(0)
+        );
+
         variableDebtToken = new VariableDebtToken(
             address(pool),
             NCT,
@@ -131,24 +166,41 @@ contract PoolTest is Test {
             "VD",
             address(0)
         );
+        variableDebtToken2 = new VariableDebtToken(
+            address(pool),
+            MOSS,
+            "VariableDebt2",
+            "VD2",
+            address(0)
+        );
     }
 
     function setup_interestRateStrategy() public {
+        // strategy = new DefaultReserveInterestRateStrategy(
+        //     polygonProvider,
+        //     8 * 1e26,
+        //     0,
+        //     4 * 1e25,
+        //     75 * 1e25,
+        //     2 * 1e25,
+        //     75 * 1e25
+        // );
         strategy = new DefaultReserveInterestRateStrategy(
-            polygonProvider,
-            8 * 1e26,
-            0,
-            4 * 1e25,
-            75 * 1e25,
-            2 * 1e25,
-            75 * 1e25
-        );
+            polygonProvider, 
+            OPTIMAL_UTILIZATION_RATE, 
+            BASE_VARIABLE_BORROW_RATE,
+            VARIABLE_RATE_SLOPE1,
+            VARIABLE_RATE_SLOPE2,
+            STABLE_RATE_SLOPE1, 
+            STABLE_RATE_SLOPE2);
     }
 
     function setup_oracle() public {
         PriceOracle fallbackOracle = new PriceOracle();
         fallbackOracle.setEthUsdPrice(5848466240000000);
-        fallbackOracle.setAssetPrice(NCT, 300 * 1e9);
+        //price 8.8.23
+        fallbackOracle.setAssetPrice(NCT, 860000 * 1e9);
+        fallbackOracle.setAssetPrice(MOSS, 610000 * 1e9);
         MockAggregator aggregator = new MockAggregator(300 * 1e9);
 
         LendingRateOracle lendingRateOracle = new LendingRateOracle();
@@ -166,10 +218,36 @@ contract PoolTest is Test {
             18,
             address(strategy)
         );
-        LendingPoolConfigurator(configurator).enableBorrowingOnReserve(NCT, true);
+        LendingPoolConfigurator(configurator).enableBorrowingOnReserve(
+            NCT,
+            true
+        );
         //
         // 5% liquidation bonus
-        LendingPoolConfigurator(configurator).configureReserveAsCollateral(NCT, 7500, 9000, 10500);
+        LendingPoolConfigurator(configurator).configureReserveAsCollateral(
+            NCT,
+            7500,
+            9000,
+            10500
+        );
+
+        LendingPoolConfigurator(configurator).initReserve(
+            address(aToken2),
+            address(stableDebtToken2),
+            address(variableDebtToken2),
+            18,
+            address(strategy)
+        );
+        LendingPoolConfigurator(configurator).enableBorrowingOnReserve(
+            MOSS,
+            true
+        );
+        // LendingPoolConfigurator(configurator).configureReserveAsCollateral(
+        //     MOSS,
+        //     7500,
+        //     9000,
+        //     10500
+        // );
     }
 
     function test_setup() public {
@@ -223,7 +301,7 @@ contract PoolTest is Test {
         uint bal = AToken(aToken).balanceOf(address(this));
         assertEq(bal, amount);
 
-        // 5 weeks have passed, making time pass should update LI at next action 
+        // 5 weeks have passed, making time pass should update LI at next action
         vm.warp(block.timestamp + 500 * WEEK);
         // deposit more liquidity - recalculates liquidity index
         pool.deposit(NCT, 50e18, address(user), 0);
@@ -236,12 +314,16 @@ contract PoolTest is Test {
     function test_borrow() public {
         uint amount = 100e18;
         pool.deposit(NCT, amount, address(this), 0);
+        pool.deposit(MOSS, amount, address(this), 0);
 
         pool.deposit(NCT, 50e18, address(user), 0);
-vm.startPrank(user);
-pool.setUserUseReserveAsCollateral(NCT, true);
-        pool.borrow(MOSS, 1e18, 1, 0, address(this));
-        //something is missing 
+
+        vm.startPrank(user);
+        // IERC20(aToken).approve(address(pool), 1e18);
+        pool.setUserUseReserveAsCollateral(NCT, true);
+        pool.borrow(MOSS, 1e18, 1, 0, address(user));
+                pool.borrow(MOSS, 1e18, 1, 0, address(user));
+
     }
 
     function assertReserve(
