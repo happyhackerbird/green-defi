@@ -112,8 +112,7 @@ library ReserveLogic {
         uint256 previousVariableBorrowIndex = reserve.variableBorrowIndex;
         uint256 previousLiquidityIndex = reserve.liquidityIndex;
         uint40 lastUpdatedTimestamp = reserve.lastUpdateTimestamp;
-            console.log("old LI",                 previousLiquidityIndex
-);
+        console.log("old LI", previousLiquidityIndex);
 
         (
             uint256 newLiquidityIndex,
@@ -126,7 +125,7 @@ library ReserveLogic {
                 lastUpdatedTimestamp
             );
 
-            console.log("new LI", newLiquidityIndex);
+        console.log("new LI", newLiquidityIndex);
 
         _mintToTreasury(
             reserve,
@@ -234,7 +233,6 @@ library ReserveLogic {
             aTokenAddress
         );
 
-
         (
             vars.newLiquidityRate,
             vars.newStableRate,
@@ -264,7 +262,7 @@ library ReserveLogic {
         reserve.currentLiquidityRate = uint128(vars.newLiquidityRate);
         reserve.currentStableBorrowRate = uint128(vars.newStableRate);
         reserve.currentVariableBorrowRate = uint128(vars.newVariableRate);
-        console.log("interest rate after", reserve.currentLiquidityRate);
+        console.log("LiquidityRate after", reserve.currentLiquidityRate);
 
         emit ReserveDataUpdated(
             reserveAddress,
@@ -378,14 +376,17 @@ library ReserveLogic {
         uint40 timestamp
     ) internal returns (uint256, uint256) {
         uint256 currentLiquidityRate = reserve.currentLiquidityRate;
-        console.log("update reserve indices, current liquidiyt rate", currentLiquidityRate);
+        console.log(
+            "update reserve indices, current liquidiyt rate",
+            currentLiquidityRate
+        );
 
         uint256 newLiquidityIndex = liquidityIndex;
         uint256 newVariableBorrowIndex = variableBorrowIndex;
 
         //only cumulating if there is any income being produced
         if (currentLiquidityRate > 0) {
-            console.log("cumlating");
+            console.log("cumulating interest");
             uint256 cumulatedLiquidityInterest = MathUtils
                 .calculateLinearInterest(currentLiquidityRate, timestamp);
             newLiquidityIndex = cumulatedLiquidityInterest.rayMul(
@@ -395,7 +396,6 @@ library ReserveLogic {
                 newLiquidityIndex <= type(uint128).max,
                 Errors.RL_LIQUIDITY_INDEX_OVERFLOW
             );
-
 
             reserve.liquidityIndex = uint128(newLiquidityIndex);
 

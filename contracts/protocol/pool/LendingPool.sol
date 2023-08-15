@@ -897,7 +897,6 @@ contract LendingPool is
             .getAssetPrice(vars.asset)
             .mul(vars.amount)
             .div(10 ** reserve.configuration.getDecimals());
-            console.log("amountInETH: %s", amountInETH);
 
         ValidationLogic.validateBorrow(
             vars.asset,

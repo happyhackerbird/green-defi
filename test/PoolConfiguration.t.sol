@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.0;
 
-import {DSTest} from "ds-test/test.sol";
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
 import {LendingPool} from "contracts/protocol/pool/LendingPool.sol";
@@ -19,7 +18,7 @@ import {LendingRateOracle} from "contracts/mocks/oracle/LendingRateOracle.sol";
 import {IERC20} from "contracts/dependencies/openzeppelin/contracts/IERC20.sol";
 import {DataTypes} from "contracts/protocol/libraries/types/DataTypes.sol";
 
-contract PoolTest is Test {
+contract PoolConfigurationTest is Test {
     LendingPool implementation;
     LendingPool pool;
     LendingPoolAddressesProviderRegistry registry;
@@ -41,14 +40,13 @@ contract PoolTest is Test {
 
     uint constant WEEK = 1 weeks;
 
-            uint256 constant OPTIMAL_UTILIZATION_RATE = 800000000000000000; // 80%
-uint256 constant EXCESS_UTILIZATION_RATE = 200000000000000000; // 20%
-uint256 constant BASE_VARIABLE_BORROW_RATE = 10000000000000000; // 1%
-uint256 constant VARIABLE_RATE_SLOPE1 = 50000000000000000; // 5%
-uint256 constant VARIABLE_RATE_SLOPE2 = 100000000000000000; // 10%
-uint256 constant STABLE_RATE_SLOPE1 = 20000000000000000; // 2%
-uint256 constant STABLE_RATE_SLOPE2 = 40000000000000000; // 4%
-
+    uint256 constant OPTIMAL_UTILIZATION_RATE = 800000000000000000; // 80%
+    uint256 constant EXCESS_UTILIZATION_RATE = 200000000000000000; // 20%
+    uint256 constant BASE_VARIABLE_BORROW_RATE = 10000000000000000; // 1%
+    uint256 constant VARIABLE_RATE_SLOPE1 = 50000000000000000; // 5%
+    uint256 constant VARIABLE_RATE_SLOPE2 = 100000000000000000; // 10%
+    uint256 constant STABLE_RATE_SLOPE1 = 20000000000000000; // 2%
+    uint256 constant STABLE_RATE_SLOPE2 = 40000000000000000; // 4%
 
     event Deposit(
         address indexed reserve,
@@ -82,11 +80,6 @@ uint256 constant STABLE_RATE_SLOPE2 = 40000000000000000; // 4%
         uint256 amount
     );
 
-    constructor () public {
-        setUp();
-        test_borrow();
-    }
-
     function setUp() public {
         vm.startPrank(admin);
         setup_pool();
@@ -109,8 +102,7 @@ uint256 constant STABLE_RATE_SLOPE2 = 40000000000000000; // 4%
         vm.startPrank(user);
         IERC20(NCT).approve(address(pool), 1e27);
         IERC20(MOSS).approve(address(pool), 1e27);
-                vm.stopPrank();
-
+        vm.stopPrank();
     }
 
     function setup_pool() public {
@@ -178,21 +170,22 @@ uint256 constant STABLE_RATE_SLOPE2 = 40000000000000000; // 4%
     function setup_interestRateStrategy() public {
         // strategy = new DefaultReserveInterestRateStrategy(
         //     polygonProvider,
-        //     8 * 1e26,
-        //     0,
-        //     4 * 1e25,
-        //     75 * 1e25,
-        //     2 * 1e25,
-        //     75 * 1e25
+        // 8 * 1e26,
+        // 0,
+        // 4 * 1e25,
+        // 75 * 1e25,
+        // 2 * 1e25,
+        // 75 * 1e25
         // );
         strategy = new DefaultReserveInterestRateStrategy(
-            polygonProvider, 
-            OPTIMAL_UTILIZATION_RATE, 
+            polygonProvider,
+            OPTIMAL_UTILIZATION_RATE,
             BASE_VARIABLE_BORROW_RATE,
             VARIABLE_RATE_SLOPE1,
             VARIABLE_RATE_SLOPE2,
-            STABLE_RATE_SLOPE1, 
-            STABLE_RATE_SLOPE2);
+            STABLE_RATE_SLOPE1,
+            STABLE_RATE_SLOPE2
+        );
     }
 
     function setup_oracle() public {
@@ -222,13 +215,11 @@ uint256 constant STABLE_RATE_SLOPE2 = 40000000000000000; // 4%
             NCT,
             true
         );
-        //
-        // 5% liquidation bonus
         LendingPoolConfigurator(configurator).configureReserveAsCollateral(
             NCT,
-            7500,
-            9000,
-            10500
+            7500, // LTV
+            9000, // Liquidation threshold
+            10500 // 5% liquidation bonus
         );
 
         LendingPoolConfigurator(configurator).initReserve(
@@ -248,10 +239,18 @@ uint256 constant STABLE_RATE_SLOPE2 = 40000000000000000; // 4%
         //     9000,
         //     10500
         // );
+
+        // get aToken proxies
+        DataTypes.ReserveData memory reserve = pool.getReserveData(NCT);
+        aToken = AToken(reserve.aTokenAddress);
+        reserve = pool.getReserveData(MOSS);
+        aToken2 = AToken(reserve.aTokenAddress);
     }
 
     function test_setup() public {
-        assertReserve(1e27, 1e27, 0, 0);
+        // at the start liqudity index and variable borrow index is initialized to one ray
+        assertReserve(NCT, 1e27, 1e27, 0, 0);
+        assertReserve(MOSS, 1e27, 1e27, 0, 0);
     }
 
     function test_getAddressProvider() public {
@@ -269,75 +268,18 @@ uint256 constant STABLE_RATE_SLOPE2 = 40000000000000000; // 4%
         );
     }
 
-    function test_deposit() public {
-        uint amount = 100e18;
-        vm.expectEmit(true, true, true, true);
-        emit Deposit(NCT, address(this), address(this), amount, 0);
-        pool.deposit(NCT, amount, address(this), 0);
-        assertReserve(1e27, 1e27, 0, 0);
-
-        //get newly minted tokens
-        uint bal = AToken(aToken).scaledBalanceOf(address(this));
-        assertEq(bal, amount);
-
-        // get balance + interest
-        bal = AToken(aToken).balanceOf(address(this));
-        assertEq(bal, amount);
-
-        // deposit on behalf of another user & check balance
-        pool.deposit(NCT, 5e18, address(user), 0);
-        bal = AToken(aToken).balanceOf(address(user));
-        assertEq(bal, 5e18);
-    }
-
-    function test_interestRateCalculation() public {
-        uint amount = 100e18;
-        pool.deposit(NCT, amount, address(this), 0);
-
-        // at the start, reserve indices are initiliazed to 1e27 = 1 ray
-        assertReserve(1e27, 1e27, 0, 0);
-
-        // return token + interest; 0 interest because no time has passed & no action taken yet
-        uint bal = AToken(aToken).balanceOf(address(this));
-        assertEq(bal, amount);
-
-        // 5 weeks have passed, making time pass should update LI at next action
-        vm.warp(block.timestamp + 500 * WEEK);
-        // deposit more liquidity - recalculates liquidity index
-        pool.deposit(NCT, 50e18, address(user), 0);
-        bal = AToken(aToken).balanceOf(address(user));
-        assertEq(bal, 50e18);
-        // assert that the liquidity index has been updated
-        assertReserve(1e27, 1e27, 0, 0);
-    }
-
-    function test_borrow() public {
-        uint amount = 100e18;
-        pool.deposit(NCT, amount, address(this), 0);
-        pool.deposit(MOSS, amount, address(this), 0);
-
-        pool.deposit(NCT, 50e18, address(user), 0);
-
-        vm.startPrank(user);
-        // IERC20(aToken).approve(address(pool), 1e18);
-        pool.setUserUseReserveAsCollateral(NCT, true);
-        pool.borrow(MOSS, 1e18, 1, 0, address(user));
-                pool.borrow(MOSS, 1e18, 1, 0, address(user));
-
-    }
-
+    // helper
     function assertReserve(
+        address asset,
         uint liquidityIndex,
         uint variableBorrowIndex,
         uint currentLiquidityRate,
         uint currentVariableBorrowRate
     ) public {
-        DataTypes.ReserveData memory reserve = pool.getReserveData(NCT);
+        DataTypes.ReserveData memory reserve = pool.getReserveData(asset);
         assertEq(reserve.liquidityIndex, liquidityIndex);
         assertEq(reserve.variableBorrowIndex, variableBorrowIndex);
         assertEq(reserve.currentLiquidityRate, currentLiquidityRate);
         assertEq(reserve.currentVariableBorrowRate, currentVariableBorrowRate);
-
-        aToken = AToken(reserve.aTokenAddress);
     }
 }
