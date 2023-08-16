@@ -243,8 +243,10 @@ contract PoolConfigurationTest is Test {
         // get aToken proxies
         DataTypes.ReserveData memory reserve = pool.getReserveData(NCT);
         aToken = AToken(reserve.aTokenAddress);
+        stableDebtToken = StableDebtToken(reserve.stableDebtTokenAddress);
         reserve = pool.getReserveData(MOSS);
         aToken2 = AToken(reserve.aTokenAddress);
+        stableDebtToken2 = StableDebtToken(reserve.stableDebtTokenAddress);
     }
 
     function test_setup() public {
