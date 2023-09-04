@@ -40,13 +40,20 @@ contract PoolConfigurationTest is Test {
 
     uint constant WEEK = 1 weeks;
 
-    uint256 constant OPTIMAL_UTILIZATION_RATE = 800000000000000000; // 80%
-    uint256 constant EXCESS_UTILIZATION_RATE = 200000000000000000; // 20%
-    uint256 constant BASE_VARIABLE_BORROW_RATE = 10000000000000000; // 1%
-    uint256 constant VARIABLE_RATE_SLOPE1 = 50000000000000000; // 5%
-    uint256 constant VARIABLE_RATE_SLOPE2 = 100000000000000000; // 10%
-    uint256 constant STABLE_RATE_SLOPE1 = 20000000000000000; // 2%
-    uint256 constant STABLE_RATE_SLOPE2 = 40000000000000000; // 4%
+    // uint256 constant OPTIMAL_UTILIZATION_RATE = 800000000000000000; // 80%
+    // uint256 constant EXCESS_UTILIZATION_RATE = 200000000000000000; // 20%
+    // uint256 constant BASE_VARIABLE_BORROW_RATE = 10000000000000000; // 1%
+    // uint256 constant VARIABLE_RATE_SLOPE1 = 50000000000000000; // 5%
+    // uint256 constant VARIABLE_RATE_SLOPE2 = 100000000000000000; // 10%
+    // uint256 constant STABLE_RATE_SLOPE1 = 20000000000000000; // 2%
+    // uint256 constant STABLE_RATE_SLOPE2 = 40000000000000000; // 4%
+    uint256 constant OPTIMAL_UTILIZATION_RATE = 8e25;
+    uint256 constant EXCESS_UTILIZATION_RATE = 0;
+    uint256 constant BASE_VARIABLE_BORROW_RATE = 0;
+    uint256 constant VARIABLE_RATE_SLOPE1 = 5e25;
+    uint256 constant VARIABLE_RATE_SLOPE2 = 1e26;
+    uint256 constant STABLE_RATE_SLOPE1 = 5e25;
+    uint256 constant STABLE_RATE_SLOPE2 = 1e26;
 
     event Deposit(
         address indexed reserve,
@@ -168,17 +175,14 @@ contract PoolConfigurationTest is Test {
     }
 
     function setup_interestRateStrategy() public {
-        // strategy = new DefaultReserveInterestRateStrategy(
-        //     polygonProvider,
-        // 8 * 1e26,
-        // 0,
-        // 4 * 1e25,
-        // 75 * 1e25,
-        // 2 * 1e25,
-        // 75 * 1e25
-        // );
         strategy = new DefaultReserveInterestRateStrategy(
             polygonProvider,
+            // 65 * 1e25,
+            // 0,
+            // 8 * 1e25,
+            // 3 * 1e27,
+            // 10 * 1e25,
+            // 3 * 1e25
             OPTIMAL_UTILIZATION_RATE,
             BASE_VARIABLE_BORROW_RATE,
             VARIABLE_RATE_SLOPE1,
@@ -218,7 +222,7 @@ contract PoolConfigurationTest is Test {
         LendingPoolConfigurator(configurator).configureReserveAsCollateral(
             NCT,
             7500, // LTV
-            9000, // Liquidation threshold
+            9000, //
             10500 // 5% liquidation bonus
         );
 

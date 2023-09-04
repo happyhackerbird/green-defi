@@ -34,7 +34,7 @@ contract PoolActionTest is PoolConfigurationTest {
         uint amount = 100e18;
         pool.deposit(NCT, amount, address(this), 0);
         pool.deposit(MOSS, amount, address(this), 0);
-        amount = 50e18;
+        amount = 150e18;
         pool.deposit(NCT, amount, address(user), 0);
         // configure asset as collateral
         vm.prank(user);
@@ -63,7 +63,7 @@ contract PoolActionTest is PoolConfigurationTest {
         pool.deposit(MOSS, amount, address(this), 0);
 
         // at the start, reserve indices are initiliazed to 1e27 = 1 ray
-        assertReserve(NCT, 1e27, 1e27, 0, 1e16); // for some reason after deposit() variableBorrowIndex has changed
+        assertReserve(NCT, 1e27, 1e27, 0, 0);
 
         // return token + interest; 0 interest because no time has passed & no action taken yet
         uint bal = AToken(aToken).balanceOf(address(this));

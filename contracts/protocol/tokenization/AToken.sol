@@ -139,7 +139,7 @@ contract AToken is VersionedInitializable, IncentivizedERC20, IAToken {
         uint256 previousBalance = super.balanceOf(user);
 
         uint256 amountScaled = amount.rayDiv(index);
-        console.log("amount minted: %s", amountScaled);
+        console.log("amount minted: %s", amountScaled, index, amount);
         require(amountScaled != 0, Errors.CT_INVALID_MINT_AMOUNT);
         _mint(user, amountScaled);
 
@@ -200,6 +200,10 @@ contract AToken is VersionedInitializable, IncentivizedERC20, IAToken {
     function balanceOf(
         address user
     ) public view override(IncentivizedERC20, IERC20) returns (uint256) {
+        console.log(
+            "income",
+            POOL.getReserveNormalizedIncome(UNDERLYING_ASSET_ADDRESS)
+        );
         return
             super.balanceOf(user).rayMul(
                 POOL.getReserveNormalizedIncome(UNDERLYING_ASSET_ADDRESS)
