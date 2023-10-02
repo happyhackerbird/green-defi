@@ -17,7 +17,7 @@ import "forge-std/console.sol";
  * Voting weight is equal to w = amount *  t / t_max , so it is dependent on both the locked amount as well as the time locked.
  *
  */
-contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
+contract VotingEscrow is Ownable, ReentrancyGuard {
     using SafeERC20 for ERC20;
 
     event Deposit(
@@ -29,6 +29,11 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
     );
 
     event Withdraw(address indexed provider, uint value, uint ts);
+
+    // token information
+    string public name;
+    string public symbol;
+    uint public decimals = 18;
 
     // Shared global state
     address public immutable GREEN;
@@ -75,7 +80,7 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
         INCREASE_LOCK_TIME
     }
 
-    constructor(address greenToken) ERC20("Vote-Escrow GREEN", "veGREEN") {
+    constructor(address greenToken) {
         GREEN = greenToken;
         pointHistory[0] = Point({
             bias: int128(0),
@@ -83,6 +88,8 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
             ts: block.timestamp,
             blk: block.number
         });
+        name = "Vote-Escrow GREEN";
+        symbol = "veGREEN";
     }
 
     function addToWhitelist(address addr) external onlyOwner {
@@ -198,7 +205,6 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
         );
     }
 
-
     /**
      * @dev Trigger global checkpoint
      */
@@ -286,8 +292,6 @@ contract VotingEscrow is ERC20, Ownable, ReentrancyGuard {
         if (value != 0) {
             ERC20(GREEN).safeTransferFrom(addr, address(this), value);
         }
-        // mint veGREEN
-        // _mint(_add
         emit Deposit(addr, value, newLocked.end, lockedAction, block.timestamp);
     }
 
