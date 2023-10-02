@@ -7,7 +7,7 @@ import {SafeERC20} from "@openzeppelin-contracts/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin-contracts/SafeCast.sol";
 import {Ownable} from "@openzeppelin-contracts/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin-contracts/ReentrancyGuard.sol";
-
+import {IVotingEscrow} from "./IVotingEscrow.sol";
 import "forge-std/console.sol";
 
 /**
@@ -17,18 +17,8 @@ import "forge-std/console.sol";
  * Voting weight is equal to w = amount *  t / t_max , so it is dependent on both the locked amount as well as the time locked.
  *
  */
-contract VotingEscrow is Ownable, ReentrancyGuard {
+contract VotingEscrow is IVotingEscrow, Ownable, ReentrancyGuard {
     using SafeERC20 for ERC20;
-
-    event Deposit(
-        address indexed provider,
-        uint256 value,
-        uint256 unlockTime,
-        LockAction indexed action,
-        uint256 ts
-    );
-
-    event Withdraw(address indexed provider, uint value, uint ts);
 
     // token information
     string public name;
@@ -46,7 +36,7 @@ contract VotingEscrow is Ownable, ReentrancyGuard {
     // address public blocklist
     // Smart contract addresses which are allowed to deposit
     // One wants to prevent the veGREEN from being tokenized
-    mapping(address => bool) public whitelist;
+    mapping(address => bool) public allowlist;
 
     // Lock state
     // Every time a change in slope or bias occurs, the epoch is increased by 1, and a new checkpoint is recorded in the history
@@ -74,12 +64,6 @@ contract VotingEscrow is Ownable, ReentrancyGuard {
         uint end;
     }
 
-    enum LockAction {
-        CREATE_LOCK,
-        INCREASE_LOCK_AMOUNT,
-        INCREASE_LOCK_TIME
-    }
-
     constructor(address greenToken) {
         GREEN = greenToken;
         pointHistory[0] = Point({
@@ -92,12 +76,17 @@ contract VotingEscrow is Ownable, ReentrancyGuard {
         symbol = "veGREEN";
     }
 
-    function addToWhitelist(address addr) external onlyOwner {
-        whitelist[addr] = true;
+    function addToAllowlist(address addr) external onlyOwner {
+        allowlist[addr] = true;
     }
 
-    function removeFromWhitelist(address addr) external onlyOwner {
-        whitelist[addr] = false;
+    function removeFromAllowlist(address addr) external onlyOwner {
+        allowlist[addr] = false;
+    }
+
+    modifier onlyAllowlisted() {
+        require(allowlist[msg.sender], "Not allowed");
+        _;
     }
 
     /**************************Getters************************************/
@@ -130,7 +119,7 @@ contract VotingEscrow is Ownable, ReentrancyGuard {
     function createLock(
         uint256 value,
         uint256 unlockTime
-    ) external nonReentrant {
+    ) external nonReentrant onlyAllowlisted {
         LockedBalance memory Locked = LockedBalance({
             // get the users current position - 0 if new user
             amount: lockedBalances[msg.sender].amount,
@@ -158,7 +147,7 @@ contract VotingEscrow is Ownable, ReentrancyGuard {
      * @dev Extend lock of msg.sender by tokens without affecting lock time
      * @param amount Amount of tokens to add to lock
      */
-    function increaseAmount(uint amount) external nonReentrant {
+    function increaseAmount(uint amount) external nonReentrant onlyAllowlisted {
         // get user's lock
         LockedBalance memory Locked = lockedBalances[msg.sender];
         require(amount > 0, "Amount must be non-zero");
@@ -181,7 +170,7 @@ contract VotingEscrow is Ownable, ReentrancyGuard {
      * @dev Extend lock of msg.sender by time without affecting lock amount
      * @param newTime new unlock time
      */
-    function increaseTime(uint newTime) external nonReentrant {
+    function increaseTime(uint newTime) external nonReentrant onlyAllowlisted {
         LockedBalance memory Locked = lockedBalances[msg.sender];
 
         uint unlockTime = (newTime / WEEK) * WEEK;
@@ -228,14 +217,14 @@ contract VotingEscrow is Ownable, ReentrancyGuard {
      * @param addr Address of the account
      * @return balance of account
      */
-    function currentBalance(address addr) external view returns (uint) {
+    function balanceOf(address addr) external view returns (uint) {
         return _balanceOf(addr, block.timestamp);
     }
 
     /**
      * @dev Withdraw all tokens for msg.sender
      */
-    function withdraw() external nonReentrant {
+    function withdraw() external nonReentrant onlyAllowlisted {
         LockedBalance memory Locked = lockedBalances[msg.sender];
         uint value = uint(int(Locked.amount));
 

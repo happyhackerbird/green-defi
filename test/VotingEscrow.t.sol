@@ -35,6 +35,10 @@ contract VotingEscrowTest is Test {
         token = new ERC20("Green", "GRN");
         ve = new VotingEscrow(address(token));
 
+        ve.addToAllowlist(address(this));
+        ve.addToAllowlist(user);
+        ve.addToAllowlist(user2);
+
         // deposit funds into user account
         deal(address(token), user, 1000 * 1e18);
         deal(address(token), user2, 1000 * 1e18);
@@ -84,7 +88,7 @@ contract VotingEscrowTest is Test {
 
         // check voting power
         // at current time
-        int128 bal = SafeCast.toInt128(int(ve.currentBalance(address(user))));
+        int128 bal = SafeCast.toInt128(int(ve.balanceOf(address(user))));
         assertEq(bal, calculatedBias);
 
         // the scheduled slope change at the end of the lock, this removes the effect of the lock globally
@@ -135,10 +139,10 @@ contract VotingEscrowTest is Test {
         int128 bias2 = slope2 * int128(int(end2 - block.timestamp));
 
         // check individual voting power
-        int128 bal = SafeCast.toInt128(int(ve.currentBalance(address(user))));
+        int128 bal = SafeCast.toInt128(int(ve.balanceOf(address(user))));
         assertEq(bal, bias1);
 
-        bal = SafeCast.toInt128(int(ve.currentBalance(address(user2))));
+        bal = SafeCast.toInt128(int(ve.balanceOf(address(user2))));
         assertEq(bal, bias2);
 
         int128 bias;
@@ -192,7 +196,7 @@ contract VotingEscrowTest is Test {
         int128 i_amount = 5 * 1e18;
         int128 slope1 = i_amount / iMAXTIME;
         int128 bias1 = slope1 * int128(int(end1 - block.timestamp));
-        int128 bal = SafeCast.toInt128(int(ve.currentBalance(address(user))));
+        int128 bal = SafeCast.toInt128(int(ve.balanceOf(address(user))));
         assertEq(bal, bias1);
 
         // set time to one week before lock ends (51 weeks)
@@ -204,7 +208,7 @@ contract VotingEscrowTest is Test {
         // assert user voting power
         int128 slope2 = i_amount / iMAXTIME;
         int128 bias2 = slope2 * int128(int(end1 - block.timestamp));
-        bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
+        bal = SafeCast.toInt128(int(ve.balanceOf(address(this))));
         assertEq(bal, bias2);
 
         // individual user history
@@ -309,7 +313,7 @@ contract VotingEscrowTest is Test {
         int128 calculatedSlope = int128(5 * 1e18) / iMAXTIME;
         int128 calculatedBias = calculatedSlope *
             int128(int(end1 - block.timestamp));
-        int128 bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
+        int128 bal = SafeCast.toInt128(int(ve.balanceOf(address(this))));
         assertEq(bal, calculatedBias);
 
         // increase amount after a block
@@ -328,7 +332,7 @@ contract VotingEscrowTest is Test {
         // if the user extends their lock they gain more voting power
         calculatedBias = calculatedSlope * int128(int(end2 - block.timestamp));
         assertLt(bal, calculatedBias);
-        bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
+        bal = SafeCast.toInt128(int(ve.balanceOf(address(this))));
         assertEq(bal, calculatedBias);
 
         // the last checkpoint has the correct updated bias
@@ -369,7 +373,7 @@ contract VotingEscrowTest is Test {
         int128 calculatedSlope = int128(5 * 1e18) / iMAXTIME;
         int128 calculatedBias = calculatedSlope *
             int128(int(end1 - block.timestamp));
-        int128 bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
+        int128 bal = SafeCast.toInt128(int(ve.balanceOf(address(this))));
         assertEq(bal, calculatedBias);
 
         // increase amount after a block
@@ -389,7 +393,7 @@ contract VotingEscrowTest is Test {
         // assert balance with updated amount (also checks user point history)
         calculatedSlope = int128(10 * 1e18) / iMAXTIME;
         calculatedBias = calculatedSlope * int128(int(end1 - block.timestamp));
-        bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
+        bal = SafeCast.toInt128(int(ve.balanceOf(address(this))));
         assertEq(bal, calculatedBias);
 
         // the last checkpoint has the correct updated slope
@@ -436,7 +440,7 @@ contract VotingEscrowTest is Test {
         int128 i_amount = 5 * 1e18;
         int128 slope1 = i_amount / iMAXTIME;
         int128 bias1 = slope1 * int128(int(end1 - block.timestamp));
-        int128 bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
+        int128 bal = SafeCast.toInt128(int(ve.balanceOf(address(this))));
         assertEq(bal, bias1);
 
         // set time and trigger global checkpoint
@@ -517,14 +521,14 @@ contract VotingEscrowTest is Test {
         int128 calculatedSlope = int128(10 * 1e18) / iMAXTIME;
         int128 calculatedBias = calculatedSlope *
             int128(int(end1 - block.timestamp));
-        int128 bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
+        int128 bal = SafeCast.toInt128(int(ve.balanceOf(address(this))));
         assertEq(bal, calculatedBias);
 
         assertEq(token.balanceOf(address(this)), (1000 - 10) * 1e18);
 
         // expire the lock and withdraw
         vm.warp(end1);
-        bal = SafeCast.toInt128(int(ve.currentBalance(address(this))));
+        bal = SafeCast.toInt128(int(ve.balanceOf(address(this))));
         assertEq(bal, 0);
 
         vm.expectEmit(true, true, true, true);
