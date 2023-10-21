@@ -1,3 +1,4 @@
-# Carbon-Backed DeFi Protocol Project
+# Carbon-Asset Backed Lending Protocol Thesis Project
 
-Diagrams for the smart contracts: https://miro.com/welcomeonboard/aDloMGpNbk9JQ0ROZVF6cUExb21VYXpaYVBubHNHSXVhZzlBY2RENTVoczN0VzA0eDlEMU1meE9OcFhMQmVyanwzNDU4NzY0NTUzNjMyNzM2MTg0fDI=?share_link_id=209657961113
+Link to the thesis
+https://drive.google.com/file/d/1YhWr9KL1iH7ayLLMr8uOVVWzpxTCESIR/view?usp=sharing
